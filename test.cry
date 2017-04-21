@@ -1,0 +1,304 @@
+### Helper functions:
+
+nil:[];;
+
+$:list:car[__];;n:car[cdr[__]];;
+  ?[=[n 0] ~[car[list]] nil];
+  $[cdr[list] -[n 1]];;
+
+$0:$[__ 0];;
+$1:$[__ 1];;
+$2:$[__ 2];;
+
+$_0:$[___ 0];;
+$_1:$[___ 1];;
+$_2:$[___ 2];;
+
+!=:![=[$0 $1]];;
+
+^:?[$0 ![$1] $1];;
+
+>=:|[>[$0 $1] =[$0 $1]];;
+<=:|[<[$0 $1] =[$0 $1]];;
+
+# This sort of recursion doesn't terminate because ? is regular function so
+# pow always gets evaluated before being passed and results in infinite
+# unterminated recursion [i.e. don't do this]:
+# pow:?[=[$1 0] 1 *[$0 pow[a -[$1 1]]]];;
+
+# Do this instead [i.e. use ~ in a previous statement]:
+pow:?[=[$1 0] ~[1] nil];*[$0 pow[$0 -[$1 1]]];;
+
+len:list:$_0;;?[=[list nil] ~[0] nil];+[1 len[cdr[list]]];;
+
+truncate:list:$_0;;n:$_1;;
+  ?[=[n len[list]] ~[nil] nil];
+  +[[car[list]] truncate[cdr[list] n]];;
+
+cd..dr:list:$_0;;n:$_1;;
+  ?[=[n 0] ~[list] nil];
+  cd..dr[cdr[list] -[n 1]];;
+
+sub:list:$_0;;start:$_1;;range:$_2;;
+  truncate[cd..dr[list start] -[-[len[list] start] range]];;
+
+@:list:$_0;;func:$_1;;
+  ?[=[cdr[list] nil] ~[[,[func[] [car[list]]]]] nil];
+  +[[,[func[] [car[list]]]] @[cdr[list] func]];;
+
+.:n:$_0;;m:$_1;;
+  ?[=[n m] ~[[m]] nil];
+  +[[n] .[+[n 1] m]];;
+
+### Our testing harness:
+
+succeed:msg:$_0;;
+  +["+ : " msg];;
+
+# Look at these literal newlines:
+fail:
+  a:$_0;;b:$_1;;msg:$_2;;
+  +[+[+[+[+["- : " msg] "
+  : expected : "] string[b]] "
+  :      got : "] string[a]];;
+
+assert:
+  a:$_0;;b:$_1;;msg:$_2;;
+  >>[?[=[a b] succeed[msg] fail[a b msg]]];;
+
+assert!:
+  a:$_0;;b:$_1;;msg:$_2;;
+  >>[?[!=[a b] succeed[msg] fail[a b msg]]];;
+
+assert_error:
+  a:$_0;;b:$_1;;msg:$_2;;
+  assert[car[catch[a]] b msg];;
+
+assert[1 1 "one equals one"];
+assert![1 0 "one does not equal zero"];
+
+### Functions:
+
+test_00:car[_];;
+test_01:test_00[car[_]];;
+assert[test_01[1] 1 "chained functions work"];
+
+test_02:test_03:car[_];;test_03[car[_]];;
+assert[test_02[1] 1 "inner functions work"];
+
+### Anonymous functions:
+
+test_05::car[_];;;
+assert[,[test_05[] [1]] 1 "call of anonymous function with parameter works"];
+
+# TODO: doesn't work yet; parse is either eating an extra token or not enough,
+# only a problem inside lists, works okay if last argument
+#assert[,[:car[_]; [1]] 1 "call of inline anonymous function with parameter works"];
+
+assert_error[,[] "parameter length" "argument error for ,"];
+assert_error[,[test_05] "parameter length" "argument error for function in ,"];
+assert_error[,[nil nil] "type error" "type error for ,"];
+
+### Types:
+
+assert[int[1.0] 1 "float to int conversion"];
+assert[int["1"] 1 "string to int conversion"];
+
+assert[float[1] 1.0 "int to float conversion"];
+assert[float["1.1"] 1.1 "string to float conversion"];
+
+assert[string[1] "1" "int to string conversion"];
+assert[string[1.1] "1.1" "float to string conversion"];
+assert[string[false] "false" "atom to string conversion"];
+assert[string[[1 true 1.1]] "[1 true 1.1]" "list to string conversion"];
+
+# Yeah this is kind of crazy but it works, not sure I don't want extra semicolon
+# here (see above):
+assert[string[:+[1 2];] "<function>" "function to string conversion"];
+
+assert_error[int["1" "2"] "parameter length" "argument error for int"];
+assert_error[int["z"] "parse error" "unparseable string for int"];
+assert_error[int[nil] "type error" "type error for int"];
+
+assert_error[float["1" "2"] "parameter length" "argument error for float"];
+assert_error[float["z"] "parse error" "unparseable string for float"];
+assert_error[float[nil] "type error" "type error for float"];
+
+assert_error[string["1" "2"] "parameter length" "argument error for string"];
+
+### Exceptions:
+
+test_06:~[1];2;;
+assert[test_06 1 "~ terminates function returning value"];
+
+assert[catch[raise["error"]] ["error" "error" nil]
+  "can catch raised exception"];
+assert[catch[~[nil]] ["return" nil nil] "can catch return exception"];
+assert[catch[nil] ["ok" nil] "can catch non-exception"];
+
+test_07:raise["error"];;
+assert[catch[test_07] ["error" "error" ["test_07"]]
+  "catch gets call stack"];
+
+test_08:test_07;;
+assert[catch[test_08] ["error" "error" ["test_07" "test_08"]]
+  "catch gets nested call stack"];
+
+assert[catch[+[-[raise["error"] 1] 1]] ["error" "error" nil]
+  "exception passes through functions"];
+assert[catch[string[raise["error"]]] ["error" "error" nil]
+  "exception passes through string can't simply change type"];
+assert[catch[?[raise["error"] true false]] ["error" "error" nil]
+  "exception passes through ?"];
+assert[catch[?[true raise["error"] false]] ["error" "error" nil]
+  "exception passes through ? when returned"];
+assert[?[false raise["error"] false] false
+  "exception doesn't pass through ? when not returned"];
+assert[?[true true raise["error"]] true
+  "exception doesn't pass through ? when not returned"];
+
+# TODO: undefined function
+# TODO: redefined function
+# TODO: arity mismatch of defined function
+
+### Math:
+
+assert[+[1 1] 2 "adding int to int"];
+assert[+[1 1.1] 2.1 "adding int to float"];
+assert[+[1.1 1] 2.1 "adding float to int"];
+assert[+[1.1 1.1] 2.2 "adding float to float"];
+
+assert[-[2 1] 1 "subtracting int from int"];
+assert[-[2 0.9] 1.1 "subtracting int from float"];
+assert[-[2.1 1] 1.1 "subtracting float from int"];
+assert[-[2.2 1.1] 1.1 "subtracting float from float"];
+
+assert[*[1 1] 1 "multiplying int with int"];
+assert[*[1 1.1] 1.1 "multiplying int with float"];
+assert[*[1.1 1] 1.1 "multiplying float with int"];
+assert[*[0.5 2.0] 1.0 "multiplying float with float"];
+
+assert[/[4 2] 2 "dividing int by int"];
+assert[/[1 2] 0 "dividing int by int [rounded]"];
+assert[/[1 2.0] 0.5 "dividing int by float"];
+assert[/[1.0 2] 0.5 "dividing float by int"];
+assert[/[1.0 2.0] 0.5 "dividing float by float"];
+assert_error[/[2 0] "division by zero" "catches divide by zero error"];
+
+assert[%[3 2] 1 "modulus works"];
+assert[%[4 2] 0 "modulus works"];
+
+assert[pow[3 3] 27 "raising to a power"];
+
+# TODO: type errors + division by zero
+
+### Boolean operations:
+
+assert[&[true true] true "true and true are true"];
+assert[&[false true] false "false and true are false"];
+assert[&[true false] false "true and false are false"];
+assert[&[false false] false "false and false are false"];
+
+assert[|[true true] true "true or true is true"];
+assert[|[false true] true "false or true is true"];
+assert[|[true false] true "true or false is true"];
+assert[|[false false] false "false or false is false"];
+
+assert[![true] false "not true is false"];
+assert[![false] true "not false is true"];
+
+assert[^[true true] false "true xor true is false"];
+assert[^[false true] true "false xor true is true"];
+assert[^[true false] true "true xor false is true"];
+assert[^[false false] false "false xor false is false"];
+
+# TODO: type errors
+
+### Appending things:
+
+assert[+["hello " "world"] "hello world" "appending to a string"];
+assert[+[[1 true] [nil 2.0]] [1 true nil 2.0]
+  "appending a list to a list"];
+
+# TODO: type errors
+
+### Control and comparisons:
+
+assert[?[true 1 0] 1 "question is true"];
+assert[?[false 1 0] 0 "question is false"];
+
+assert[=[1 1] true "comparison of int to int"];
+assert[=[1 2] false "comparison of int to int"];
+
+assert[=[0 0.0] false "comparison of int to float is false"];
+assert[=[nil false] false "comparison of nil to false is false"];
+
+assert[=[nil nil] true "comparison of nil to nil is true"];
+assert[=[true true] true "comparison of true to true is true"];
+assert[=[true false] false "comparison of true to false is false"];
+assert[=[false true] false "comparison of false to true is false"];
+assert[=[false false] true "comparison of false to false is true"];
+
+assert[=[1.0 1.0] true "comparison of float to float"];
+assert[=[1.0 2.0] false "comparison of float to float"];
+
+assert[=["one" "one"] true "comparison of string to string"];
+assert[=["one" "two"] false "comparison of string to string"];
+
+assert[=[[1 2] [1 2]] true "comparison of list to list"];
+assert[=[[1 2 3] [1 2]] false "comparison of list to list"];
+assert[=[[1 2] [1 2 3]] false "comparison of list to list"];
+
+# TODO: dissimilar types
+
+assert[>[1 1] false "comparison of int to int"];
+assert[>=[1 1] true "comparison of int to int"];
+assert[<[1 1] false "comparison of int to int"];
+assert[<=[1 1] true "comparison of int to int"];
+
+assert[>[2 1] true "comparison of int to int"];
+assert[>=[2 1] true "comparison of int to int"];
+assert[<[2 1] false "comparison of int to int"];
+assert[<=[2 1] false "comparison of int to int"];
+
+assert[>[1 2] false "comparison of int to int"];
+assert[>=[1 2] false "comparison of int to int"];
+assert[<[1 2] true "comparison of int to int"];
+assert[<=[1 2] true "comparison of int to int"];
+
+assert[>[1.0 1.0] false "comparison of float to float"];
+assert[>=[1.0 1.0] true "comparison of float to float"];
+assert[<[1.0 1.0] false "comparison of float to float"];
+assert[<=[1.0 1.0] true "comparison of float to float"];
+
+# TODO: type errors
+
+### String operations:
+
+assert[substr["hello" 1 3] "ell" "substring works"];
+assert[substr["こんにちは" 1 3] "んにち" "substring works with UTF-8"];
+assert[strlen["hello"] 5 "strlen works"];
+assert[strlen["こんにちは"] 5 "strlen works with UTF-8"];
+
+# TODO: range errors
+
+### List primitive operations:
+
+assert[car[[1 2 3]] 1 "car works"];
+assert[cdr[[1 2 3]] [2 3] "cdr works"];
+assert[cdr[[1]] nil "cdr works on single entry list"];
+
+# TODO: type errors
+
+### Composed list operations:
+
+assert[len[[1 2 3]] 3 "len works on list"];
+assert[truncate[[1 2 3 4] 1] [1 2 3] "truncate works on list"];
+assert[truncate[[1 2 3 4] 2] [1 2] "truncate works on list"];
+assert[sub[[1 2 3 4] 1 2] [2 3] "sub works"];
+assert[$[[1 2 3 4] 2] 3 "index works"];
+
+test_09::+[$[_ 0] 1];;;
+assert[@[[1 2 3] test_09] [2 3 4] "map (@) works"];
+
+assert[.[1 4] [1 2 3 4] "range (.) works"];
